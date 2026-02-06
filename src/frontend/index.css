@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+}
+
+/* Custom Base Styles for Dark Mode if needed, though Tailwind 'dark:' utilities handle most */
+html.dark body {
+  background-color: #0f172a; /* slate-900 */
+  color: #f8fafc; /* slate-50 */
+}
