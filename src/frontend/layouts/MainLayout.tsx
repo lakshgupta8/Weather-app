@@ -11,7 +11,7 @@ export const MainLayout = () => {
                 <div className="flex justify-between items-center mx-auto px-4 max-w-5xl h-16">
                     <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                         <CloudSun className="w-8 h-8 text-blue-500" />
-                        <span className="font-bold text-xl tracking-tight">Weather</span>
+                        <span className="font-bold text-xl tracking-tight">HorizonHue</span>
                     </Link>
 
                     <nav className="flex items-center gap-4">

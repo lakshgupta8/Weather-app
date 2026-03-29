@@ -41,7 +41,7 @@ export const TemperatureChart = memo(function TemperatureChart({ data, unit = "m
                             border: 'none',
                             boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                         }}
-                        formatter={(value: number | string | Array<number | string> | undefined) => [`${Math.round(Number(value || 0))}°${unit === "metric" ? "C" : "F"}`, 'Temperature']}
+                        formatter={(value: string | number | readonly (string | number)[] | undefined) => [`${Math.round(Number(value || 0))}°${unit === "metric" ? "C" : "F"}`, 'Temperature']}
                         labelStyle={{ color: '#64748b', marginBottom: '0.25rem' }}
                     />
                     <Area
