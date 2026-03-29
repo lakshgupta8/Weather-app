@@ -12,8 +12,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.OPENWEATHER_API_KEY;
 
-/** Cache: 10 mins TTL */
+/** Cache: 10 mins TTL for weather, 24hr for search */
 const cache = new NodeCache({ stdTTL: 600 });
+const searchCache = new NodeCache({ stdTTL: 86400 });
 
 /** Rate Limit: 100 req / 15 mins */
 const limiter = rateLimit({
@@ -42,6 +43,40 @@ const getCachedResponse = async (key: string, fetcher: () => Promise<any>) => {
 /** GET /health - System status */
 app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+/** GET /weather/search/cities - City name autocomplete suggestions */
+app.get("/weather/search/cities", async (req: Request, res: Response, next: NextFunction) => {
+    const { q } = req.query;
+    if (!q || String(q).trim().length < 2) {
+        res.status(400).json({ error: "Query 'q' must be at least 2 characters" });
+        return;
+    }
+
+    try {
+        const cacheKey = `city_search_${String(q).toLowerCase()}`;
+        const cachedData = searchCache.get(cacheKey);
+        if (cachedData) {
+            res.json(cachedData);
+            return;
+        }
+
+        const url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(String(q))}&limit=5&appid=${API_KEY}`;
+        const response = await axios.get(url);
+
+        const suggestions = response.data.map((item: GeocodingResult) => ({
+            name: item.name,
+            state: item.state || null,
+            country: item.country,
+            lat: item.lat,
+            lon: item.lon,
+        }));
+
+        searchCache.set(cacheKey, suggestions);
+        res.json(suggestions);
+    } catch (error) {
+        next(error);
+    }
 });
 
 /** GET /weather/city - Current weather by city name */
@@ -113,6 +148,14 @@ app.use((err: any, _req: Request, res: Response) => {
 });
 
 // --- Types & Helpers ---
+
+interface GeocodingResult {
+    name: string;
+    state?: string;
+    country: string;
+    lat: number;
+    lon: number;
+}
 
 interface OpenWeatherResponse {
     name: string;

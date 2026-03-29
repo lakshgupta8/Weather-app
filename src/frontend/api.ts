@@ -1,4 +1,4 @@
-import type { WeatherData, ForecastData } from "./types";
+import type { WeatherData, ForecastData, CitySuggestion } from "./types";
 
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
@@ -25,5 +25,12 @@ export async function getWeatherByLocation(
         `${BASE_URL}/weather/location?lat=${lat}&lon=${lon}`
     );
     if (!res.ok) throw new Error("Location error");
+    return res.json();
+}
+
+/** Fetch city name suggestions for autocomplete */
+export async function getCitySuggestions(q: string): Promise<CitySuggestion[]> {
+    const res = await fetch(`${BASE_URL}/weather/search/cities?q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
     return res.json();
 }

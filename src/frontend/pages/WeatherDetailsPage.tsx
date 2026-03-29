@@ -54,7 +54,7 @@ export const WeatherDetailsPage = () => {
 
             {/* Main Weather Card */}
             <div className="bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden">
-                <div className="sm:flex sm:justify-between sm:items-center bg-gradient-to-br from-blue-500 to-blue-700 p-8 text-white sm:text-left text-center">
+                <div className="sm:flex sm:justify-between sm:items-center bg-linear-to-br from-blue-500 to-blue-700 p-8 text-white sm:text-left text-center">
                     <div>
                         <h1 className="mb-1 font-bold text-3xl">{weather.city}</h1>
                         <p className="flex justify-center sm:justify-start items-center gap-2 text-blue-100 text-lg capitalize">

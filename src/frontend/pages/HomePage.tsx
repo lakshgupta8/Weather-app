@@ -29,8 +29,7 @@ export const HomePage = () => {
     return (
         <div className="flex flex-col gap-6">
             <section className="space-y-2 text-center">
-                <h1 className="font-bold text-slate-800 text-2xl">Hello there!</h1>
-                <p className="text-slate-500">Check the weather around you or search for a city.</p>
+                <h1 className="text-slate-500 text-lg">Check the weather around you or search for a city.</h1>
             </section>
 
             {loading ? (

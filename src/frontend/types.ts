@@ -13,3 +13,11 @@ export interface ForecastData {
     description: string;
     icon: string;
 }
+
+export interface CitySuggestion {
+    name: string;
+    state: string | null;
+    country: string;
+    lat: number;
+    lon: number;
+}

@@ -97,7 +97,7 @@ const CityCard = ({ data }: { data: { weather: WeatherData | null; forecast: For
     return (
         <div className="space-y-4">
             {/* Current Weather */}
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg p-6 rounded-2xl text-white">
+            <div className="bg-linear-to-br from-blue-500 to-blue-600 shadow-lg p-6 rounded-2xl text-white">
                 <h2 className="mb-1 font-bold text-2xl">{data.weather.city}</h2>
                 <p className="mb-4 text-blue-100 capitalize">{data.weather.weather}</p>
 
