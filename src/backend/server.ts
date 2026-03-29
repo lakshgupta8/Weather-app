@@ -9,6 +9,8 @@ import NodeCache from "node-cache";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
+const apiRouter = express.Router();
 const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.OPENWEATHER_API_KEY;
 
@@ -25,7 +27,9 @@ const limiter = rateLimit({
     message: { error: "Too many requests, please try again later." }
 });
 
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:8888', 'https://horizonhue.netlify.app']
+}));
 app.use(express.json());
 app.use(limiter);
 
@@ -46,7 +50,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 /** GET /weather/search/cities - City name autocomplete suggestions */
-app.get("/weather/search/cities", async (req: Request, res: Response, next: NextFunction) => {
+apiRouter.get("/weather/search/cities", async (req: Request, res: Response, next: NextFunction) => {
     const { q } = req.query;
     if (!q || String(q).trim().length < 2) {
         res.status(400).json({ error: "Query 'q' must be at least 2 characters" });
@@ -80,7 +84,7 @@ app.get("/weather/search/cities", async (req: Request, res: Response, next: Next
 });
 
 /** GET /weather/city - Current weather by city name */
-app.get("/weather/city", async (req: Request, res: Response, next: NextFunction) => {
+apiRouter.get("/weather/city", async (req: Request, res: Response, next: NextFunction) => {
     const { city } = req.query;
     if (!city) {
         res.status(400).json({ error: "City is required" });
@@ -100,7 +104,7 @@ app.get("/weather/city", async (req: Request, res: Response, next: NextFunction)
 });
 
 /** GET /weather/location - Current weather by coordinates */
-app.get("/weather/location", async (req: Request, res: Response, next: NextFunction) => {
+apiRouter.get("/weather/location", async (req: Request, res: Response, next: NextFunction) => {
     const { lat, lon } = req.query;
     if (!lat || !lon) {
         res.status(400).json({ error: "Latitude and Longitude are required" });
@@ -120,7 +124,7 @@ app.get("/weather/location", async (req: Request, res: Response, next: NextFunct
 });
 
 /** GET /weather/forecast - 5-day forecast by city */
-app.get("/weather/forecast", async (req: Request, res: Response, next: NextFunction) => {
+apiRouter.get("/weather/forecast", async (req: Request, res: Response, next: NextFunction) => {
     const { city } = req.query;
     if (!city) {
         res.status(400).json({ error: "City is required" });
@@ -139,8 +143,13 @@ app.get("/weather/forecast", async (req: Request, res: Response, next: NextFunct
     }
 });
 
+// Mount the API Router on all relevant paths
+app.use(["/.netlify/functions/api", "/api", "/"], apiRouter);
+
+
 /** Global Error Handler */
-app.use((err: any, _req: Request, res: Response) => {
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    void _next; // Important for Express 4/5 error signature
     console.error("API Error:", err.message || err);
     const status = err.response?.status || err.status || 500;
     const message = err.response?.data?.message || err.message || "Internal Server Error";
@@ -216,6 +225,10 @@ const formatForecast = (data: OpenWeatherForecastResponse) => {
     })).slice(0, 5); // Ensure max 5 days
 };
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+export { app };
+
+if (import.meta.main) {
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}

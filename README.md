@@ -1,4 +1,4 @@
-# Weather App (Advanced Full-Stack)
+# HorizonHue
 
 A premium, full-stack weather intelligence application built with **React 19** and **Express 5**. Designed for visual excellence, performance, and a seamless user experience.
 
@@ -91,7 +91,7 @@ A premium, full-stack weather intelligence application built with **React 19** a
 
    ```bash
    cp .env.example .env
-   # Add your OPENWEATHER_API_KEY and VITE_API_BASE_URL
+   # Add your OPENWEATHER_API_KEY
    ```
 
 4. **Launch Application**

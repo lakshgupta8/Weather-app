@@ -42,3 +42,6 @@ build_error.log*
 bun.lock
 .turbo
 tokens.json
+
+# Local Netlify folder
+.netlify

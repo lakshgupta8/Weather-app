@@ -13,8 +13,8 @@ interface TemperatureChartProps {
  */
 export const TemperatureChart = memo(function TemperatureChart({ data, unit = "metric" }: TemperatureChartProps) {
     return (
-        <div className="w-full h-64">
-            <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full h-64" style={{ minHeight: '256px' }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                     <defs>
                         <linearGradient id="colorTemp" x1="0" y1="0" x2="0" y2="1">
