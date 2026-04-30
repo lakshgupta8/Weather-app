@@ -24,6 +24,14 @@ const limiter = rateLimit({
     limit: 100,
     legacyHeaders: false,
     standardHeaders: true,
+    keyGenerator: (req) => {
+        const clientIp = req.headers['x-nf-client-connection-ip'] || 
+                        req.headers['x-forwarded-for'] || 
+                        req.socket.remoteAddress || 
+                    '   unknown'; // Fallback string
+        return Array.isArray(clientIp) ? clientIp[0] : clientIp;
+    },
+    validate: { xForwardedForHeader: false },
     message: { error: "Too many requests, please try again later." }
 });
 
