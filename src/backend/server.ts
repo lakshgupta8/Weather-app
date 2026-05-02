@@ -53,7 +53,7 @@ const getCachedResponse = async (key: string, fetcher: () => Promise<any>) => {
 };
 
 /** GET /health - System status */
-app.get("/health", (_req: Request, res: Response) => {
+apiRouter.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
@@ -235,7 +235,10 @@ const formatForecast = (data: OpenWeatherForecastResponse) => {
 
 export { app };
 
-if (import.meta.main) {
+// For Bun/Node ESM compatibility
+const isMain = (import.meta as any).main || (process.argv[1] && import.meta.url && process.argv[1] === new URL(import.meta.url).pathname);
+
+if (isMain) {
     app.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
     });
