@@ -5,10 +5,11 @@ import { useWeatherContext } from "../context/useWeatherContext";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "../hooks/useDebounce";
 import { getCitySuggestions } from "../api";
-import type { CitySuggestion } from "../types";
+import { hasCoords, type CitySuggestion, type SavedLocation } from "../types";
 
 interface CitySearchProps {
-    onCitySelect?: (city: string) => void;
+    /** When provided, selection is handed to the caller instead of the shared weather context */
+    onCitySelect?: (location: SavedLocation) => void;
 }
 
 export function CitySearch({ onCitySelect }: CitySearchProps) {
@@ -18,7 +19,7 @@ export function CitySearch({ onCitySelect }: CitySearchProps) {
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
     const { recentSearches, addRecentSearch, clearHistory } = useLocation();
-    const { fetchWeatherByCity } = useWeatherContext();
+    const { fetchWeatherByCity, fetchWeatherByLocation } = useWeatherContext();
     const navigate = useNavigate();
 
     const debouncedQuery = useDebounce(query, 800);
@@ -28,50 +29,57 @@ export function CitySearch({ onCitySelect }: CitySearchProps) {
         const trimmed = debouncedQuery.trim();
         if (trimmed.length < 3) return;
 
-        let cancelled = false;
-        getCitySuggestions(trimmed).then((results) => {
-            if (!cancelled) {
+        const controller = new AbortController();
+        getCitySuggestions(trimmed, controller.signal)
+            .then((results) => {
+                if (controller.signal.aborted) return;
                 setSuggestions(results);
                 setIsLoadingSuggestions(false);
-            }
-        });
+            })
+            .catch(() => {
+                // Aborted by a newer query; the next effect run owns the state
+            });
 
-        return () => {
-            cancelled = true;
-        };
+        return () => controller.abort();
     }, [debouncedQuery]);
 
-    const handleSearch = async (city: string) => {
-        if (!city.trim()) return;
+    const handleSearch = async (location: SavedLocation) => {
+        const name = location.name.trim();
+        if (!name) return;
 
         setSuggestions([]);
         setIsLoadingSuggestions(false);
-
+        setIsFocused(false);
 
         if (onCitySelect) {
-            onCitySelect(city);
+            onCitySelect({ ...location, name });
             setQuery("");
-            setIsFocused(false);
             return;
         }
 
-        await fetchWeatherByCity(city);
-        addRecentSearch(city);
-        navigate(`/search`);
-        setQuery(city);
-        setIsFocused(false);
+        setQuery(name);
+        // Move to the results page first so its loading state is visible while we fetch
+        navigate("/search");
+
+        const ok = hasCoords(location)
+            ? await fetchWeatherByLocation(location.lat, location.lon)
+            : await fetchWeatherByCity(name);
+
+        // Only remember searches that actually resolved to a place
+        if (ok) addRecentSearch({ ...location, name });
     };
 
     const handleSuggestionSelect = (suggestion: CitySuggestion) => {
-        const cityName = suggestion.name;
-        setQuery(cityName);
-        handleSearch(cityName);
+        setQuery(suggestion.name);
+        handleSearch({ name: suggestion.name, lat: suggestion.lat, lon: suggestion.lon });
     };
 
     /** Set loading true immediately on each keystroke when query is long enough */
     const handleQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
         setQuery(val);
+        // Typing proves the input is focused, even right after a submit hid the dropdown
+        setIsFocused(true);
         if (val.trim().length >= 3) {
             setIsLoadingSuggestions(true);
         } else {
@@ -82,7 +90,7 @@ export function CitySearch({ onCitySelect }: CitySearchProps) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        handleSearch(query);
+        handleSearch({ name: query });
     };
 
     const showSuggestions = isFocused && suggestions.length > 0 && query.trim().length >= 3;
@@ -186,15 +194,15 @@ export function CitySearch({ onCitySelect }: CitySearchProps) {
                         </button>
                     </div>
                     <ul>
-                        {recentSearches.map((city) => (
-                            <li key={city}>
+                        {recentSearches.map((location) => (
+                            <li key={location.name}>
                                 <button
                                     type="button"
-                                    onClick={() => handleSearch(city)}
+                                    onClick={() => handleSearch(location)}
                                     className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 px-4 py-3 w-full text-slate-700 dark:text-slate-200 text-left transition-colors"
                                 >
                                     <Clock className="w-4 h-4 text-slate-400" />
-                                    <span>{city}</span>
+                                    <span>{location.name}</span>
                                 </button>
                             </li>
                         ))}

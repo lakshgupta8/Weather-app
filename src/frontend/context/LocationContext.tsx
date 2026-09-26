@@ -1,29 +1,58 @@
 import { useEffect, useState } from "react";
 import { LocationContext, type LocationContextType } from "./useLocation";
+import type { SavedLocation } from "../types";
+
+const STORAGE_KEY = "recentSearches";
+const MAX_RECENT = 5;
+
+/**
+ * Read saved history, accepting both the current object shape and the
+ * plain-string entries written by earlier versions of the app.
+ */
+const loadRecent = (): SavedLocation[] => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) return [];
+        const parsed: unknown = JSON.parse(saved);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map((entry): SavedLocation | null => {
+                if (typeof entry === "string") return { name: entry };
+                if (entry && typeof entry === "object" && typeof (entry as SavedLocation).name === "string") {
+                    const { name, lat, lon } = entry as SavedLocation;
+                    return { name, lat, lon };
+                }
+                return null;
+            })
+            .filter((entry): entry is SavedLocation => entry !== null)
+            .slice(0, MAX_RECENT);
+    } catch {
+        return [];
+    }
+};
 
 /**
  * Location Provider
  * Manages search history and selected city.
  */
 export function LocationProvider({ children }: { children: React.ReactNode }) {
-    const [recentSearches, setRecentSearches] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem("recentSearches");
-            return saved ? JSON.parse(saved) : [];
-        } catch {
-            return [];
-        }
-    });
+    const [recentSearches, setRecentSearches] = useState<SavedLocation[]>(loadRecent);
 
     useEffect(() => {
-        localStorage.setItem("recentSearches", JSON.stringify(recentSearches));
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(recentSearches));
+        } catch {
+            // Storage may be unavailable (private mode, quota); history is best-effort
+        }
     }, [recentSearches]);
 
-    const addRecentSearch = (city: string) => {
+    const addRecentSearch = (location: SavedLocation) => {
+        const name = location.name.trim();
+        if (!name) return;
+        const entry: SavedLocation = { name, lat: location.lat, lon: location.lon };
         setRecentSearches((prev) => {
-            const normalized = city.trim();
-            const filtered = prev.filter((item) => item.toLowerCase() !== normalized.toLowerCase());
-            return [normalized, ...filtered].slice(0, 5); // Keep last 5
+            const filtered = prev.filter((item) => item.name.toLowerCase() !== name.toLowerCase());
+            return [entry, ...filtered].slice(0, MAX_RECENT);
         });
     };
 
