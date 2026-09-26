@@ -9,6 +9,8 @@ export interface SettingsContextType {
     convertSpeed: (ms: number) => number;
     formatTemp: (celsius: number) => string;
     formatSpeed: (ms: number) => string;
+    /** Format a distance given in metres (e.g. visibility) as km or miles */
+    formatDistance: (metres: number | null) => string;
 }
 
 export const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

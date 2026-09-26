@@ -39,8 +39,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         return `${Math.round(val)} ${unit === "metric" ? "m/s" : "mph"}`;
     };
 
+    const formatDistance = (metres: number | null): string => {
+        if (metres === null || !Number.isFinite(metres)) return "N/A";
+        const value = unit === "metric" ? metres / 1000 : metres / 1609.344;
+        const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+        return `${rounded} ${unit === "metric" ? "km" : "mi"}`;
+    };
+
     return (
-        <SettingsContext.Provider value={{ unit, toggleUnit, convertTemp, convertSpeed, formatTemp, formatSpeed }}>
+        <SettingsContext.Provider value={{ unit, toggleUnit, convertTemp, convertSpeed, formatTemp, formatSpeed, formatDistance }}>
             {children}
         </SettingsContext.Provider>
     );

@@ -13,6 +13,7 @@ app.set("trust proxy", 1);
 const apiRouter = express.Router();
 const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.OPENWEATHER_API_KEY;
+const OWM_BASE = "https://api.openweathermap.org";
 
 /** Cache: 10 mins TTL for weather, 24hr for search */
 const cache = new NodeCache({ stdTTL: 600 });
@@ -25,11 +26,13 @@ const limiter = rateLimit({
     legacyHeaders: false,
     standardHeaders: true,
     keyGenerator: (req) => {
-        const clientIp = req.headers['x-nf-client-connection-ip'] || 
-                        req.headers['x-forwarded-for'] || 
-                        req.socket.remoteAddress || 
-                    '   unknown'; // Fallback string
-        return Array.isArray(clientIp) ? clientIp[0] : clientIp;
+        const raw = req.headers['x-nf-client-connection-ip'] ||
+                    req.headers['x-forwarded-for'] ||
+                    req.socket.remoteAddress ||
+                    'unknown';
+        const value = Array.isArray(raw) ? raw[0] : raw;
+        // x-forwarded-for may be a comma-separated chain; the first entry is the client.
+        return value.split(",")[0].trim() || 'unknown';
     },
     validate: { xForwardedForHeader: false },
     message: { error: "Too many requests, please try again later." }
@@ -41,6 +44,16 @@ app.use(cors({
 app.use(express.json());
 app.use(limiter);
 
+/** Helper: Build an OpenWeatherMap URL with properly encoded query params */
+const owmUrl = (path: string, params: Record<string, string | number>) => {
+    const url = new URL(path, OWM_BASE);
+    for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, String(value));
+    }
+    url.searchParams.set("appid", API_KEY ?? "");
+    return url.toString();
+};
+
 /** Helper: Wrap async calls with cache */
 const getCachedResponse = async (key: string, fetcher: () => Promise<any>) => {
     const cachedData = cache.get(key);
@@ -51,6 +64,19 @@ const getCachedResponse = async (key: string, fetcher: () => Promise<any>) => {
     cache.set(key, data);
     return data;
 };
+
+/** Helper: Parse and validate lat/lon query params. Returns null when invalid. */
+const parseCoords = (lat: unknown, lon: unknown): { lat: number; lon: number } | null => {
+    const latNum = Number(lat);
+    const lonNum = Number(lon);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lonNum)) return null;
+    if (latNum < -90 || latNum > 90 || lonNum < -180 || lonNum > 180) return null;
+    // Round to 3 decimals (~100m) so nearby requests share a cache entry
+    return { lat: Math.round(latNum * 1000) / 1000, lon: Math.round(lonNum * 1000) / 1000 };
+};
+
+/** Helper: Normalize a city name for cache keys */
+const cityKey = (city: unknown) => String(city).trim().toLowerCase();
 
 /** GET /health - System status */
 apiRouter.get("/health", (_req: Request, res: Response) => {
@@ -66,14 +92,14 @@ apiRouter.get("/weather/search/cities", async (req: Request, res: Response, next
     }
 
     try {
-        const cacheKey = `city_search_${String(q).toLowerCase()}`;
+        const cacheKey = `city_search_${cityKey(q)}`;
         const cachedData = searchCache.get(cacheKey);
         if (cachedData) {
             res.json(cachedData);
             return;
         }
 
-        const url = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(String(q))}&limit=5&appid=${API_KEY}`;
+        const url = owmUrl("/geo/1.0/direct", { q: String(q).trim(), limit: 5 });
         const response = await axios.get(url);
 
         const suggestions = response.data.map((item: GeocodingResult) => ({
@@ -94,14 +120,14 @@ apiRouter.get("/weather/search/cities", async (req: Request, res: Response, next
 /** GET /weather/city - Current weather by city name */
 apiRouter.get("/weather/city", async (req: Request, res: Response, next: NextFunction) => {
     const { city } = req.query;
-    if (!city) {
+    if (!city || !String(city).trim()) {
         res.status(400).json({ error: "City is required" });
         return;
     }
 
     try {
-        const data = await getCachedResponse(`weather_city_${city}`, async () => {
-            const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${API_KEY}`;
+        const data = await getCachedResponse(`weather_city_${cityKey(city)}`, async () => {
+            const url = owmUrl("/data/2.5/weather", { q: String(city).trim(), units: "metric" });
             const response = await axios.get(url);
             return formatWeather(response.data);
         });
@@ -113,15 +139,15 @@ apiRouter.get("/weather/city", async (req: Request, res: Response, next: NextFun
 
 /** GET /weather/location - Current weather by coordinates */
 apiRouter.get("/weather/location", async (req: Request, res: Response, next: NextFunction) => {
-    const { lat, lon } = req.query;
-    if (!lat || !lon) {
-        res.status(400).json({ error: "Latitude and Longitude are required" });
+    const coords = parseCoords(req.query.lat, req.query.lon);
+    if (!coords) {
+        res.status(400).json({ error: "Valid latitude and longitude are required" });
         return;
     }
 
     try {
-        const data = await getCachedResponse(`weather_loc_${lat}_${lon}`, async () => {
-            const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}`;
+        const data = await getCachedResponse(`weather_loc_${coords.lat}_${coords.lon}`, async () => {
+            const url = owmUrl("/data/2.5/weather", { lat: coords.lat, lon: coords.lon, units: "metric" });
             const response = await axios.get(url);
             return formatWeather(response.data);
         });
@@ -131,17 +157,26 @@ apiRouter.get("/weather/location", async (req: Request, res: Response, next: Nex
     }
 });
 
-/** GET /weather/forecast - 5-day forecast by city */
+/** GET /weather/forecast - 5-day forecast by city name, or by lat/lon */
 apiRouter.get("/weather/forecast", async (req: Request, res: Response, next: NextFunction) => {
     const { city } = req.query;
-    if (!city) {
-        res.status(400).json({ error: "City is required" });
+    const coords = parseCoords(req.query.lat, req.query.lon);
+
+    if (!coords && (!city || !String(city).trim())) {
+        res.status(400).json({ error: "City or valid latitude and longitude are required" });
         return;
     }
 
     try {
-        const data = await getCachedResponse(`forecast_city_${city}`, async () => {
-            const url = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&units=metric&appid=${API_KEY}`;
+        const cacheKey = coords
+            ? `forecast_loc_${coords.lat}_${coords.lon}`
+            : `forecast_city_${cityKey(city)}`;
+        const params = coords
+            ? { lat: coords.lat, lon: coords.lon, units: "metric" }
+            : { q: String(city).trim(), units: "metric" };
+
+        const data = await getCachedResponse(cacheKey, async () => {
+            const url = owmUrl("/data/2.5/forecast", params);
             const response = await axios.get(url);
             return formatForecast(response.data);
         });
@@ -176,17 +211,33 @@ interface GeocodingResult {
 
 interface OpenWeatherResponse {
     name: string;
+    coord: {
+        lat: number;
+        lon: number;
+    };
     main: {
         temp: number;
+        feels_like: number;
+        temp_min: number;
+        temp_max: number;
+        pressure: number;
         humidity: number;
     };
+    visibility?: number;
     wind: {
         speed: number;
     };
     weather: Array<{
         main: string;
+        description: string;
         icon: string;
     }>;
+    sys: {
+        country?: string;
+        sunrise: number;
+        sunset: number;
+    };
+    timezone: number;
 }
 
 interface ForecastItem {
@@ -196,6 +247,7 @@ interface ForecastItem {
     };
     weather: Array<{
         main: string;
+        description: string;
         icon: string;
     }>;
     dt_txt: string;
@@ -205,35 +257,82 @@ interface OpenWeatherForecastResponse {
     list: ForecastItem[];
     city: {
         name: string;
+        /** Offset from UTC in seconds */
+        timezone: number;
     }
 }
 
 const formatWeather = (data: OpenWeatherResponse) => {
     return {
         city: data.name,
+        country: data.sys?.country ?? null,
+        lat: data.coord.lat,
+        lon: data.coord.lon,
         temperature: data.main.temp,
+        feelsLike: data.main.feels_like,
+        tempMin: data.main.temp_min,
+        tempMax: data.main.temp_max,
         humidity: data.main.humidity,
+        pressure: data.main.pressure,
+        /** Visibility in metres; OpenWeatherMap caps this at 10 km */
+        visibility: data.visibility ?? null,
         windSpeed: data.wind.speed,
         weather: data.weather[0].main,
-        icon: data.weather[0].icon
+        description: data.weather[0].description,
+        icon: data.weather[0].icon,
+        sunrise: data.sys?.sunrise ?? null,
+        sunset: data.sys?.sunset ?? null,
+        timezone: data.timezone,
     };
 };
 
+/**
+ * Collapse 3-hourly forecast slots into one entry per calendar day in the
+ * city's local timezone. Each day carries its min/max across all slots and
+ * uses the slot closest to local noon for the headline temp/condition.
+ * The date is returned as a plain YYYY-MM-DD string so the client can format
+ * it in the user's locale without timezone drift.
+ */
 const formatForecast = (data: OpenWeatherForecastResponse) => {
-    // Filter to get one forecast per day (approx noon)
-    // OpenWeatherMap returns data every 3 hours. 
-    // We pick items closer to 12:00:00 to represent the day.
-    const dailyData = data.list.filter((reading) => reading.dt_txt.includes("12:00:00"));
+    const tzOffset = data.city?.timezone ?? 0;
+    const days = new Map<string, { items: ForecastItem[]; localHours: number[] }>();
 
-    return dailyData.map(item => ({
-        date: new Date(item.dt * 1000).toLocaleDateString("en-US", { weekday: 'short', month: 'short', day: 'numeric' }),
-        temp: item.main.temp,
-        description: item.weather[0].main,
-        icon: item.weather[0].icon
-    })).slice(0, 5); // Ensure max 5 days
+    for (const item of data.list) {
+        const local = new Date((item.dt + tzOffset) * 1000);
+        const key = local.toISOString().slice(0, 10);
+        const entry = days.get(key) ?? { items: [], localHours: [] };
+        entry.items.push(item);
+        entry.localHours.push(local.getUTCHours());
+        days.set(key, entry);
+    }
+
+    return Array.from(days.entries())
+        .slice(0, 5)
+        .map(([date, { items, localHours }]) => {
+            let repIndex = 0;
+            let bestDistance = Infinity;
+            localHours.forEach((hour, index) => {
+                const distance = Math.abs(hour - 12);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    repIndex = index;
+                }
+            });
+            const rep = items[repIndex];
+            const temps = items.map((i) => i.main.temp);
+
+            return {
+                date,
+                temp: rep.main.temp,
+                tempMin: Math.min(...temps),
+                tempMax: Math.max(...temps),
+                description: rep.weather[0].main,
+                icon: rep.weather[0].icon,
+            };
+        });
 };
 
-export { app };
+export { app, formatWeather, formatForecast };
 
 // For Bun/Node ESM compatibility
 const isMain = (import.meta as any).main || (process.argv[1] && import.meta.url && process.argv[1] === new URL(import.meta.url).pathname);

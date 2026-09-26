@@ -1,35 +1,48 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Loader2, ArrowRightLeft, Thermometer, Droplets, Wind, MapPin } from "lucide-react";
 import { CitySearch } from "../components/CitySearch";
 import { WeatherIcon } from "../components/WeatherIcon";
 import { TemperatureChart } from "../components/TemperatureChart";
 import { useSettings } from "../context/useSettings";
-import { getForecastByCity, getWeatherByCity } from "../api";
-import type { WeatherData, ForecastData } from "../types";
+import { ApiError, getForecastByCity, getForecastByLocation, getWeatherByCity, getWeatherByLocation } from "../api";
+import { hasCoords, type WeatherData, type ForecastData, type SavedLocation } from "../types";
+
+type Side = "left" | "right";
+
+interface CityState {
+    weather: WeatherData | null;
+    forecast: ForecastData[] | null;
+    loading: boolean;
+    error: string | null;
+}
+
+const EMPTY: CityState = { weather: null, forecast: null, loading: false, error: null };
 
 export const ComparisonPage = () => {
-    const [leftCity, setLeftCity] = useState<{ weather: WeatherData | null; forecast: ForecastData[] | null; loading: boolean; error: string | null }>({
-        weather: null, forecast: null, loading: false, error: null
-    });
+    const [leftCity, setLeftCity] = useState<CityState>(EMPTY);
+    const [rightCity, setRightCity] = useState<CityState>(EMPTY);
 
-    const [rightCity, setRightCity] = useState<{ weather: WeatherData | null; forecast: ForecastData[] | null; loading: boolean; error: string | null }>({
-        weather: null, forecast: null, loading: false, error: null
-    });
+    // Per-side request counters so a slow earlier response cannot overwrite a newer one
+    const requestIds = useRef<Record<Side, number>>({ left: 0, right: 0 });
 
     /** Handlers fetching weather data for left or right panel. */
-    const fetchData = useCallback(async (city: string, side: "left" | "right") => {
+    const fetchData = useCallback(async (location: SavedLocation, side: Side) => {
         const setTarget = side === "left" ? setLeftCity : setRightCity;
+        const requestId = ++requestIds.current[side];
 
         setTarget(prev => ({ ...prev, loading: true, error: null }));
 
         try {
-            const [weather, forecast] = await Promise.all([
-                getWeatherByCity(city),
-                getForecastByCity(city)
-            ]);
+            const [weather, forecast] = hasCoords(location)
+                ? await Promise.all([getWeatherByLocation(location.lat, location.lon), getForecastByLocation(location.lat, location.lon)])
+                : await Promise.all([getWeatherByCity(location.name), getForecastByCity(location.name)]);
+
+            if (requestIds.current[side] !== requestId) return;
             setTarget({ weather, forecast, loading: false, error: null });
-        } catch {
-            setTarget(prev => ({ ...prev, loading: false, error: "Failed to fetch data" }));
+        } catch (err) {
+            if (requestIds.current[side] !== requestId) return;
+            const message = err instanceof ApiError ? err.message : "Failed to fetch data";
+            setTarget(prev => ({ ...prev, loading: false, error: message }));
         }
     }, []);
 
@@ -48,7 +61,7 @@ export const ComparisonPage = () => {
                 <div className="space-y-4">
                     <div className="bg-white dark:bg-slate-800 shadow-sm p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
                         <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">City A</label>
-                        <CitySearch onCitySelect={(city) => fetchData(city, "left")} />
+                        <CitySearch onCitySelect={(location) => fetchData(location, "left")} />
                     </div>
                     <CityCard data={leftCity} />
                 </div>
@@ -57,7 +70,7 @@ export const ComparisonPage = () => {
                 <div className="space-y-4">
                     <div className="bg-white dark:bg-slate-800 shadow-sm p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
                         <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">City B</label>
-                        <CitySearch onCitySelect={(city) => fetchData(city, "right")} />
+                        <CitySearch onCitySelect={(location) => fetchData(location, "right")} />
                     </div>
                     <CityCard data={rightCity} />
                 </div>
@@ -66,7 +79,7 @@ export const ComparisonPage = () => {
     );
 };
 
-const CityCard = ({ data }: { data: { weather: WeatherData | null; forecast: ForecastData[] | null; loading: boolean; error: string | null } }) => {
+const CityCard = ({ data }: { data: CityState }) => {
     const { unit, formatTemp, formatSpeed } = useSettings();
 
     if (data.loading) {
@@ -98,7 +111,10 @@ const CityCard = ({ data }: { data: { weather: WeatherData | null; forecast: For
         <div className="space-y-4">
             {/* Current Weather */}
             <div className="bg-linear-to-br from-blue-500 to-blue-600 shadow-lg p-6 rounded-2xl text-white">
-                <h2 className="mb-1 font-bold text-2xl">{data.weather.city}</h2>
+                <h2 className="mb-1 font-bold text-2xl">
+                    {data.weather.city}
+                    {data.weather.country && <span className="ml-2 font-normal text-blue-100 text-base">{data.weather.country}</span>}
+                </h2>
                 <p className="mb-4 text-blue-100 capitalize">{data.weather.weather}</p>
 
                 <div className="flex justify-between items-center">
@@ -117,7 +133,7 @@ const CityCard = ({ data }: { data: { weather: WeatherData | null; forecast: For
                     </div>
                     <div className="text-center">
                         <Thermometer className="opacity-70 mx-auto mb-1 w-4 h-4" />
-                        <span className="font-medium text-sm">{formatTemp(data.weather.temperature)}</span>
+                        <span className="font-medium text-sm">{formatTemp(data.weather.feelsLike)}</span>
                     </div>
                 </div>
             </div>

@@ -140,7 +140,8 @@ src/
 | `/health`                               | GET    | Server health check     |
 | `/weather/city?city={name}`             | GET    | Current weather by city |
 | `/weather/location?lat={lat}&lon={lon}` | GET    | Weather by coordinates  |
-| `/weather/forecast?city={name}`         | GET    | 5-day forecast          |
+| `/weather/forecast?city={name}`         | GET    | 5-day forecast by city  |
+| `/weather/forecast?lat={lat}&lon={lon}` | GET    | 5-day forecast by coordinates |
 
 ---
 

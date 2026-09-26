@@ -1,23 +1,32 @@
 import { useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useWeatherContext } from "../context/useWeatherContext";
 import { useSettings } from "../context/useSettings";
 import { WeatherIcon } from "../components/WeatherIcon";
 import { TemperatureChart } from "../components/TemperatureChart";
 import { CardSkeleton, ListSkeleton, LoadingSkeleton } from "../components/LoadingSkeleton";
+import { formatForecastDate } from "../utils/format";
 import { ArrowLeft, Droplets, Wind, Gauge, Eye, Calendar } from "lucide-react";
 
 export const WeatherDetailsPage = () => {
     const { city } = useParams();
-    const { weather, forecast, loading, error, fetchWeatherByCity } = useWeatherContext();
-    const { unit, formatTemp, formatSpeed } = useSettings();
+    const [searchParams] = useSearchParams();
+    const latParam = searchParams.get("lat");
+    const lonParam = searchParams.get("lon");
+    const { weather, forecast, loading, error, fetchWeatherByCity, fetchWeatherByLocation } = useWeatherContext();
+    const { unit, formatTemp, formatSpeed, formatDistance } = useSettings();
 
-    // Fetch data when URL param changes
+    // Fetch data when the URL changes. Prefer coordinates when present so
+    // ambiguous names (e.g. "Springfield") resolve to the place the user picked.
     useEffect(() => {
-        if (city) {
+        const lat = latParam === null ? NaN : Number(latParam);
+        const lon = lonParam === null ? NaN : Number(lonParam);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            fetchWeatherByLocation(lat, lon);
+        } else if (city) {
             fetchWeatherByCity(city);
         }
-    }, [city, fetchWeatherByCity]);
+    }, [city, latParam, lonParam, fetchWeatherByCity, fetchWeatherByLocation]);
 
     if (loading) {
         return (
@@ -56,7 +65,10 @@ export const WeatherDetailsPage = () => {
             <div className="bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden">
                 <div className="sm:flex sm:justify-between sm:items-center bg-linear-to-br from-blue-500 to-blue-700 p-8 text-white sm:text-left text-center">
                     <div>
-                        <h1 className="mb-1 font-bold text-3xl">{weather.city}</h1>
+                        <h1 className="mb-1 font-bold text-3xl">
+                            {weather.city}
+                            {weather.country && <span className="ml-2 font-normal text-blue-200 text-lg">{weather.country}</span>}
+                        </h1>
                         <p className="flex justify-center sm:justify-start items-center gap-2 text-blue-100 text-lg capitalize">
                             {weather.weather}
                             <span className="text-blue-200">•</span>
@@ -87,12 +99,12 @@ export const WeatherDetailsPage = () => {
                     <DetailItem
                         icon={<Gauge className="w-5 h-5 text-blue-500" />}
                         label="Pressure"
-                        value="1013 hPa" // Placeholder or actual if available in type
+                        value={`${weather.pressure} hPa`}
                     />
                     <DetailItem
                         icon={<Eye className="w-5 h-5 text-blue-500" />}
                         label="Visibility"
-                        value="10 km" // Placeholder or actual if available in type
+                        value={formatDistance(weather.visibility)}
                     />
                 </div>
             </div>
@@ -111,9 +123,9 @@ export const WeatherDetailsPage = () => {
 
                 <div className="space-y-3">
                     {forecast && forecast.length > 0 ? (
-                        forecast.map((day, index) => (
-                            <div key={index} className="flex justify-between items-center bg-white dark:bg-slate-800 shadow-sm p-3 border border-slate-100 dark:border-slate-700 rounded-xl">
-                                <span className="w-20 font-medium text-slate-600 dark:text-slate-300">{day.date}</span>
+                        forecast.map((day) => (
+                            <div key={day.date} className="flex justify-between items-center bg-white dark:bg-slate-800 shadow-sm p-3 border border-slate-100 dark:border-slate-700 rounded-xl">
+                                <span className="w-24 font-medium text-slate-600 dark:text-slate-300">{formatForecastDate(day.date)}</span>
                                 <div className="flex flex-1 justify-center items-center gap-2">
                                     <WeatherIcon
                                         code={day.icon}
@@ -121,7 +133,10 @@ export const WeatherDetailsPage = () => {
                                     />
                                     <span className="text-slate-500 dark:text-slate-400 text-sm capitalize">{day.description}</span>
                                 </div>
-                                <span className="w-16 font-bold text-slate-800 dark:text-slate-100 text-right">{formatTemp(day.temp)}</span>
+                                <span className="w-24 text-right">
+                                    <span className="font-bold text-slate-800 dark:text-slate-100">{formatTemp(day.tempMax)}</span>
+                                    <span className="ml-1 text-slate-400 dark:text-slate-500 text-sm">{formatTemp(day.tempMin)}</span>
+                                </span>
                             </div>
                         ))
                     ) : (

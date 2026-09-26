@@ -1,8 +1,9 @@
 import { createContext, useContext } from "react";
+import type { SavedLocation } from "../types";
 
 export interface LocationContextType {
-    recentSearches: string[];
-    addRecentSearch: (city: string) => void;
+    recentSearches: SavedLocation[];
+    addRecentSearch: (location: SavedLocation) => void;
     clearHistory: () => void;
 }
 

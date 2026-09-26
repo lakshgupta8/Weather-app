@@ -4,6 +4,7 @@ import { Loader2, Droplets, Wind, ArrowRight } from "lucide-react";
 import { WeatherIcon } from "../components/WeatherIcon";
 import { Link } from "react-router-dom";
 import { useSettings } from "../context/useSettings";
+import { weatherPath } from "../utils/routes";
 
 export const SearchPage = () => {
     // Shared context state for search results
@@ -32,12 +33,15 @@ export const SearchPage = () => {
 
             {weather && !loading && (
                 <Link
-                    to={`/weather/${weather.city}`}
+                    to={weatherPath({ name: weather.city, lat: weather.lat, lon: weather.lon })}
                     className="group block slide-in-from-bottom-4 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden transition-all animate-in duration-500 fade-in"
                 >
                     <div className="bg-linear-to-br from-blue-500 to-blue-600 p-6 text-white text-center">
                         <div className="flex justify-between items-start w-full">
-                            <h2 className="font-bold text-2xl decoration-white/50 group-hover:underline underline-offset-4">{weather.city}</h2>
+                            <h2 className="font-bold text-2xl decoration-white/50 group-hover:underline underline-offset-4">
+                                {weather.city}
+                                {weather.country && <span className="ml-2 font-normal text-blue-100 text-base">{weather.country}</span>}
+                            </h2>
                             <ArrowRight className="opacity-0 group-hover:opacity-100 w-6 h-6 text-white transition-all group-hover:translate-x-1" />
                         </div>
                         <div className="flex justify-center items-center py-2">

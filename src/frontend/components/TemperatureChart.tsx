@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ForecastData } from "../types";
+import { formatForecastDate } from "../utils/format";
 
 interface TemperatureChartProps {
     data: ForecastData[];
@@ -29,6 +30,7 @@ export const TemperatureChart = memo(function TemperatureChart({ data, unit = "m
                         tickLine={false}
                         tick={{ fill: '#64748b', fontSize: 12 }}
                         tickMargin={10}
+                        tickFormatter={(value) => formatForecastDate(String(value), { weekday: "short" })}
                     />
                     <YAxis
                         hide
@@ -42,6 +44,7 @@ export const TemperatureChart = memo(function TemperatureChart({ data, unit = "m
                             boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                         }}
                         formatter={(value: string | number | readonly (string | number)[] | undefined) => [`${Math.round(Number(value || 0))}°${unit === "metric" ? "C" : "F"}`, 'Temperature']}
+                        labelFormatter={(label) => formatForecastDate(String(label))}
                         labelStyle={{ color: '#64748b', marginBottom: '0.25rem' }}
                     />
                     <Area

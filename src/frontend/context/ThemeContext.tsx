@@ -23,20 +23,20 @@ export function ThemeProvider({
 
     useEffect(() => {
         const root = window.document.documentElement;
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
 
-        root.classList.remove("light", "dark");
+        const apply = () => {
+            root.classList.remove("light", "dark");
+            const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+            root.classList.add(resolved);
+        };
 
-        if (theme === "system") {
-            const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-                .matches
-                ? "dark"
-                : "light";
+        apply();
 
-            root.classList.add(systemTheme);
-            return;
-        }
-
-        root.classList.add(theme);
+        // In "system" mode, follow OS changes while the app is open
+        if (theme !== "system") return;
+        media.addEventListener("change", apply);
+        return () => media.removeEventListener("change", apply);
     }, [theme]);
 
     const value: ThemeProviderState = {
