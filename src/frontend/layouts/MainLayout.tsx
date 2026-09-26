@@ -17,11 +17,10 @@ export const MainLayout = () => {
 
     // Prevent scrolling when mobile menu is open
     useEffect(() => {
-        if (isMenuOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
+        document.body.style.overflow = isMenuOpen ? 'hidden' : '';
+        return () => {
+            document.body.style.overflow = '';
+        };
     }, [isMenuOpen]);
 
     return (
@@ -39,6 +38,7 @@ export const MainLayout = () => {
                         <div className="flex gap-1">
                             <NavLink to="/">Home</NavLink>
                             <NavLink to="/search">Search</NavLink>
+                            <NavLink to="/compare">Compare</NavLink>
                             <NavLink to="/about">About</NavLink>
                         </div>
                         <div className="flex items-center gap-2 pl-4 border-slate-200 dark:border-slate-700 border-l">
@@ -81,6 +81,7 @@ export const MainLayout = () => {
                                 <div className="flex flex-col gap-2">
                                     <MobileNavLink to="/">Home</MobileNavLink>
                                     <MobileNavLink to="/search">Search</MobileNavLink>
+                                    <MobileNavLink to="/compare">Compare</MobileNavLink>
                                     <MobileNavLink to="/about">About</MobileNavLink>
                                 </div>
 

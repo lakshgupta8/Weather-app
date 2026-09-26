@@ -5,6 +5,7 @@ import { WeatherIcon } from "../components/WeatherIcon";
 import { Link } from "react-router-dom";
 import { useSettings } from "../context/useSettings";
 import { weatherPath } from "../utils/routes";
+import { conditionGradient } from "../utils/weatherTheme";
 
 export const SearchPage = () => {
     // Shared context state for search results
@@ -36,11 +37,11 @@ export const SearchPage = () => {
                     to={weatherPath({ name: weather.city, lat: weather.lat, lon: weather.lon })}
                     className="group block slide-in-from-bottom-4 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden transition-all animate-in duration-500 fade-in"
                 >
-                    <div className="bg-linear-to-br from-blue-500 to-blue-600 p-6 text-white text-center">
+                    <div className={`bg-linear-to-br ${conditionGradient(weather.icon)} p-6 text-white text-center`}>
                         <div className="flex justify-between items-start w-full">
                             <h2 className="font-bold text-2xl decoration-white/50 group-hover:underline underline-offset-4">
                                 {weather.city}
-                                {weather.country && <span className="ml-2 font-normal text-blue-100 text-base">{weather.country}</span>}
+                                {weather.country && <span className="ml-2 font-normal text-white/70 text-base">{weather.country}</span>}
                             </h2>
                             <ArrowRight className="opacity-0 group-hover:opacity-100 w-6 h-6 text-white transition-all group-hover:translate-x-1" />
                         </div>
@@ -51,7 +52,7 @@ export const SearchPage = () => {
                             />
                         </div>
                         <p className="mb-1 font-bold text-4xl">{formatTemp(weather.temperature)}</p>
-                        <p className="font-medium text-blue-100 capitalize">{weather.weather}</p>
+                        <p className="font-medium text-white/80 capitalize">{weather.description || weather.weather}</p>
                     </div>
 
                     <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700">

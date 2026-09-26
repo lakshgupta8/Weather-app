@@ -1,33 +1,47 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Loader2, ArrowRightLeft, Thermometer, Droplets, Wind, MapPin } from "lucide-react";
 import { CitySearch } from "../components/CitySearch";
 import { WeatherIcon } from "../components/WeatherIcon";
 import { TemperatureChart } from "../components/TemperatureChart";
 import { useSettings } from "../context/useSettings";
 import { ApiError, getForecastByCity, getForecastByLocation, getWeatherByCity, getWeatherByLocation } from "../api";
-import { hasCoords, type WeatherData, type ForecastData, type SavedLocation } from "../types";
+import { conditionGradient } from "../utils/weatherTheme";
+import { hasCoords, type WeatherData, type ForecastResponse, type SavedLocation } from "../types";
 
-type Side = "left" | "right";
+type Side = "a" | "b";
 
 interface CityState {
     weather: WeatherData | null;
-    forecast: ForecastData[] | null;
+    forecast: ForecastResponse | null;
     loading: boolean;
     error: string | null;
 }
 
 const EMPTY: CityState = { weather: null, forecast: null, loading: false, error: null };
 
+/** Build a side's location from its URL params (?a=London&alat=51.5&alon=-0.1) */
+const locationFromParams = (name: string | null, lat: string | null, lon: string | null): SavedLocation | null => {
+    const trimmed = name?.trim();
+    if (!trimmed) return null;
+    const latNum = Number(lat);
+    const lonNum = Number(lon);
+    return lat !== null && lon !== null && Number.isFinite(latNum) && Number.isFinite(lonNum)
+        ? { name: trimmed, lat: latNum, lon: lonNum }
+        : { name: trimmed };
+};
+
 export const ComparisonPage = () => {
-    const [leftCity, setLeftCity] = useState<CityState>(EMPTY);
-    const [rightCity, setRightCity] = useState<CityState>(EMPTY);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [cityA, setCityA] = useState<CityState>(EMPTY);
+    const [cityB, setCityB] = useState<CityState>(EMPTY);
 
     // Per-side request counters so a slow earlier response cannot overwrite a newer one
-    const requestIds = useRef<Record<Side, number>>({ left: 0, right: 0 });
+    const requestIds = useRef<Record<Side, number>>({ a: 0, b: 0 });
 
-    /** Handlers fetching weather data for left or right panel. */
+    /** Fetch weather data for one panel. */
     const fetchData = useCallback(async (location: SavedLocation, side: Side) => {
-        const setTarget = side === "left" ? setLeftCity : setRightCity;
+        const setTarget = side === "a" ? setCityA : setCityB;
         const requestId = ++requestIds.current[side];
 
         setTarget(prev => ({ ...prev, loading: true, error: null }));
@@ -46,6 +60,45 @@ export const ComparisonPage = () => {
         }
     }, []);
 
+    /** Selecting a city writes it to the URL; the effects below do the fetching */
+    const selectCity = (location: SavedLocation, side: Side) => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set(side, location.name);
+            if (hasCoords(location)) {
+                next.set(`${side}lat`, String(location.lat));
+                next.set(`${side}lon`, String(location.lon));
+            } else {
+                next.delete(`${side}lat`);
+                next.delete(`${side}lon`);
+            }
+            return next;
+        });
+    };
+
+    // The URL is the source of truth, which makes comparisons shareable and
+    // survives reloads. Each side re-fetches only when its own params change.
+    const a = searchParams.get("a");
+    const alat = searchParams.get("alat");
+    const alon = searchParams.get("alon");
+    const b = searchParams.get("b");
+    const blat = searchParams.get("blat");
+    const blon = searchParams.get("blon");
+
+    // Fetching in response to URL changes is the intended pattern here; the
+    // lint rule flags the synchronous "loading" flag that fetchData sets first.
+    useEffect(() => {
+        const location = locationFromParams(a, alat, alon);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (location) fetchData(location, "a");
+    }, [a, alat, alon, fetchData]);
+
+    useEffect(() => {
+        const location = locationFromParams(b, blat, blon);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (location) fetchData(location, "b");
+    }, [b, blat, blon, fetchData]);
+
     return (
         <div className="space-y-8 animate-in duration-500 fade-in">
             <header className="space-y-2 text-center">
@@ -57,22 +110,26 @@ export const ComparisonPage = () => {
             </header>
 
             <div className="gap-6 grid md:grid-cols-2">
-                {/* Left City Input */}
                 <div className="space-y-4">
                     <div className="bg-white dark:bg-slate-800 shadow-sm p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
-                        <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">City A</label>
-                        <CitySearch onCitySelect={(location) => fetchData(location, "left")} />
+                        <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">
+                            City A
+                            {searchParams.get("a") && <span className="ml-2 font-normal text-slate-400">{searchParams.get("a")}</span>}
+                        </label>
+                        <CitySearch onCitySelect={(location) => selectCity(location, "a")} />
                     </div>
-                    <CityCard data={leftCity} />
+                    <CityCard data={cityA} />
                 </div>
 
-                {/* Right City Input */}
                 <div className="space-y-4">
                     <div className="bg-white dark:bg-slate-800 shadow-sm p-4 border border-slate-200 dark:border-slate-700 rounded-xl">
-                        <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">City B</label>
-                        <CitySearch onCitySelect={(location) => fetchData(location, "right")} />
+                        <label className="block mb-2 font-medium text-slate-700 dark:text-slate-300 text-sm">
+                            City B
+                            {searchParams.get("b") && <span className="ml-2 font-normal text-slate-400">{searchParams.get("b")}</span>}
+                        </label>
+                        <CitySearch onCitySelect={(location) => selectCity(location, "b")} />
                     </div>
-                    <CityCard data={rightCity} />
+                    <CityCard data={cityB} />
                 </div>
             </div>
         </div>
@@ -80,7 +137,7 @@ export const ComparisonPage = () => {
 };
 
 const CityCard = ({ data }: { data: CityState }) => {
-    const { unit, formatTemp, formatSpeed } = useSettings();
+    const { formatTemp, formatSpeed } = useSettings();
 
     if (data.loading) {
         return (
@@ -107,15 +164,17 @@ const CityCard = ({ data }: { data: CityState }) => {
         );
     }
 
+    const daily = data.forecast?.daily ?? [];
+
     return (
         <div className="space-y-4">
             {/* Current Weather */}
-            <div className="bg-linear-to-br from-blue-500 to-blue-600 shadow-lg p-6 rounded-2xl text-white">
+            <div className={`bg-linear-to-br ${conditionGradient(data.weather.icon)} shadow-lg p-6 rounded-2xl text-white`}>
                 <h2 className="mb-1 font-bold text-2xl">
                     {data.weather.city}
-                    {data.weather.country && <span className="ml-2 font-normal text-blue-100 text-base">{data.weather.country}</span>}
+                    {data.weather.country && <span className="ml-2 font-normal text-white/70 text-base">{data.weather.country}</span>}
                 </h2>
-                <p className="mb-4 text-blue-100 capitalize">{data.weather.weather}</p>
+                <p className="mb-4 text-white/80 capitalize">{data.weather.description || data.weather.weather}</p>
 
                 <div className="flex justify-between items-center">
                     <div className="font-bold text-5xl tracking-tight">{formatTemp(data.weather.temperature)}</div>
@@ -131,7 +190,7 @@ const CityCard = ({ data }: { data: CityState }) => {
                         <Wind className="opacity-70 mx-auto mb-1 w-4 h-4" />
                         <span className="font-medium text-sm">{formatSpeed(data.weather.windSpeed)}</span>
                     </div>
-                    <div className="text-center">
+                    <div className="text-center" title="Feels like">
                         <Thermometer className="opacity-70 mx-auto mb-1 w-4 h-4" />
                         <span className="font-medium text-sm">{formatTemp(data.weather.feelsLike)}</span>
                     </div>
@@ -139,10 +198,10 @@ const CityCard = ({ data }: { data: CityState }) => {
             </div>
 
             {/* Forecast Chart */}
-            {data.forecast && (
+            {daily.length > 0 && (
                 <div className="bg-white dark:bg-slate-800 shadow-sm p-4 border border-slate-200 dark:border-slate-700 rounded-2xl">
                     <h3 className="mb-4 font-semibold text-slate-500 text-sm">5-Day Trend</h3>
-                    <TemperatureChart data={data.forecast} unit={unit} />
+                    <TemperatureChart data={daily} />
                 </div>
             )}
         </div>

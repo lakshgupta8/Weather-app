@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWeather } from "../domains/weather/hooks/useWeather";
 import { useLocation } from "../context/useLocation";
@@ -7,25 +7,53 @@ import { CitySearch } from "../components/CitySearch";
 import { WeatherIcon } from "../components/WeatherIcon";
 import { CardSkeleton } from "../components/LoadingSkeleton";
 import { weatherPath } from "../utils/routes";
-import { MapPin, Clock, Droplets, Wind } from "lucide-react";
+import { MapPin, Clock, Droplets, Wind, LocateFixed, Loader2 } from "lucide-react";
+
+type GeoStatus = "idle" | "requesting" | "granted" | "denied" | "unavailable" | "unsupported";
+
+const GEO_MESSAGES: Record<Exclude<GeoStatus, "granted">, string> = {
+    idle: "Allow location access to see local weather",
+    requesting: "Allow location access to see local weather",
+    denied: "Location access was denied. Enable it in your browser settings, then try again.",
+    unavailable: "We couldn't determine your position. Try again in a moment.",
+    unsupported: "Your browser doesn't support location lookup. Search for a city instead.",
+};
 
 export const HomePage = () => {
     const { weather, loading, error, fetchWeatherByLocation } = useWeather();
     const { recentSearches, clearHistory } = useLocation();
     const { formatTemp, formatSpeed } = useSettings();
+    const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
 
-    // Auto-fetch weather if location access is granted
-    useEffect(() => {
+    const requestLocation = useCallback(() => {
         if (!navigator.geolocation) {
+            setGeoStatus("unsupported");
             return;
         }
-
+        setGeoStatus("requesting");
         navigator.geolocation.getCurrentPosition(
             (pos) => {
+                setGeoStatus("granted");
                 fetchWeatherByLocation(pos.coords.latitude, pos.coords.longitude);
-            }
+            },
+            (err) => {
+                setGeoStatus(err.code === err.PERMISSION_DENIED ? "denied" : "unavailable");
+            },
+            { timeout: 10000, maximumAge: 5 * 60 * 1000 }
         );
     }, [fetchWeatherByLocation]);
+
+    // Auto-fetch weather if location access is granted. The lint rule flags
+    // the synchronous "requesting" status flag; that is the intended UX.
+    useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        requestLocation();
+    }, [requestLocation]);
+
+    // The browser's own timeout only starts once the permission prompt is
+    // answered, so "requesting" can last indefinitely; never block the page on it.
+    const requesting = geoStatus === "requesting";
+    const showButton = geoStatus !== "unsupported";
 
     return (
         <div className="flex flex-col gap-6">
@@ -58,7 +86,7 @@ export const HomePage = () => {
                         />
                     </div>
                     <div className="mb-2 font-bold text-slate-900 dark:text-white text-5xl">{formatTemp(weather.temperature)}</div>
-                    <p className="text-slate-500 dark:text-slate-400 text-lg capitalize">{weather.weather}</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-lg capitalize">{weather.description || weather.weather}</p>
 
                     <div className="gap-8 grid grid-cols-2 mt-6 px-4 w-full">
                         <div className="flex flex-col items-center text-center">
@@ -80,7 +108,20 @@ export const HomePage = () => {
             ) : (
                 <div className="bg-blue-50 dark:bg-blue-900/20 p-8 border border-blue-100 dark:border-blue-800 rounded-2xl text-center">
                     <MapPin className="mx-auto mb-3 w-10 h-10 text-blue-400" />
-                    <p className="font-medium text-blue-800 dark:text-blue-200">Allow location access to see local weather</p>
+                    <p className="font-medium text-blue-800 dark:text-blue-200">
+                        {GEO_MESSAGES[geoStatus === "granted" ? "idle" : geoStatus]}
+                    </p>
+                    {showButton && (
+                        <button
+                            type="button"
+                            onClick={requestLocation}
+                            disabled={requesting}
+                            className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:hover:bg-blue-500 disabled:opacity-70 mt-4 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
+                        >
+                            {requesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+                            {requesting ? "Locating…" : "Use my location"}
+                        </button>
+                    )}
                 </div>
             )}
 

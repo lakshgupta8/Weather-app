@@ -28,14 +28,16 @@ A premium, full-stack weather intelligence application built with **React 19** a
 - **Dual-Layer Caching:**
   - **Weather Data:** 10-minute TTL for real-time accuracy.
   - **City Searches:** 24-hour TTL for lightning-fast autocomplete responses.
+  - Cached responses live in memory and, when deployed on Netlify, in [Netlify Blobs](https://docs.netlify.com/blobs/overview/) so every function instance shares them across cold starts.
 - **Geolocation Auto-Detection:** Instantly identifies your city and fetches local weather on boot.
 - **Rate Limiting:** Backend protection ensures stability and prevents API abuse.
 
 ### Data Visualization
 
-- **5-Day Forecast Trends:** Interactive charts showing temperature fluctuations and atmospheric conditions.
+- **Hourly & 5-Day Forecasts:** The next 24 hours in 3-hour steps, plus a daily high/low trend chart drawn with plain SVG (no charting library).
 - **Unit Control:** Seamlessly toggle between Metric (°C, m/s) and Imperial (°F, mph) systems.
-- **City Comparison:** Side-by-side weather analytics to compare two locations instantly.
+- **City Comparison:** Side-by-side weather analytics to compare two locations instantly. The comparison lives in the URL (`/compare?a=London&b=Paris`) so it can be shared.
+- **Condition-Aware Colours:** Cards take on a palette that matches the conditions and time of day.
 
 ---
 
@@ -47,21 +49,22 @@ A premium, full-stack weather intelligence application built with **React 19** a
 - **TypeScript 5.9** (Type Safety)
 - **Tailwind CSS v4** (Modern Styling)
 - **React Router v7** (Dynamic Navigation)
-- **Recharts** (Advanced Data Visualization)
 - **Lucide React** (Premium Iconography)
 - **Vite 7.3** (Lightning Fast Build Tool)
 
 ### Backend
 
 - **Express 5** (Flexible Web Framework)
-- **Node Cache** (In-Memory Performance)
+- **Node Cache + Netlify Blobs** (Two-layer response cache)
 - **Express Rate Limit** (Security & Throttling)
 - **Axios** (Robust HTTP Client)
 
 ### Runtime & Tooling
 
 - **Bun** (Next-gen JavaScript Runtime)
-- **ESLint & Prettier** (Code Quality)
+- **ESLint** (Code Quality)
+- **Vitest + Testing Library** (Unit and component tests)
+- **GitHub Actions** (Lint, typecheck, test and build on every push and pull request)
 
 ---
 
@@ -137,11 +140,12 @@ src/
 
 | Endpoint                                | Method | Description             |
 | --------------------------------------- | ------ | ----------------------- |
-| `/health`                               | GET    | Server health check     |
+| `/health`                               | GET    | Server health check, including which cache backend is active |
+| `/weather/search/cities?q={text}`       | GET    | City autocomplete suggestions (name, state, country, lat, lon) |
 | `/weather/city?city={name}`             | GET    | Current weather by city |
 | `/weather/location?lat={lat}&lon={lon}` | GET    | Weather by coordinates  |
-| `/weather/forecast?city={name}`         | GET    | 5-day forecast by city  |
-| `/weather/forecast?lat={lat}&lon={lon}` | GET    | 5-day forecast by coordinates |
+| `/weather/forecast?city={name}`         | GET    | `{ timezone, daily[5], hourly[8] }` forecast by city |
+| `/weather/forecast?lat={lat}&lon={lon}` | GET    | Same forecast by coordinates |
 
 ---
 

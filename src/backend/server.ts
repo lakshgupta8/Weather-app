@@ -4,7 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import axios from "axios";
 import rateLimit from "express-rate-limit";
-import NodeCache from "node-cache";
+import { getCached, cacheBackend } from "./cache";
 
 dotenv.config();
 
@@ -15,9 +15,9 @@ const PORT = process.env.PORT || 5000;
 const API_KEY = process.env.OPENWEATHER_API_KEY;
 const OWM_BASE = "https://api.openweathermap.org";
 
-/** Cache: 10 mins TTL for weather, 24hr for search */
-const cache = new NodeCache({ stdTTL: 600 });
-const searchCache = new NodeCache({ stdTTL: 86400 });
+/** Cache TTLs: 10 mins for weather, 24hr for search */
+const WEATHER_TTL = 600;
+const SEARCH_TTL = 86400;
 
 /** Rate Limit: 100 req / 15 mins */
 const limiter = rateLimit({
@@ -54,17 +54,6 @@ const owmUrl = (path: string, params: Record<string, string | number>) => {
     return url.toString();
 };
 
-/** Helper: Wrap async calls with cache */
-const getCachedResponse = async (key: string, fetcher: () => Promise<any>) => {
-    const cachedData = cache.get(key);
-    if (cachedData) {
-        return cachedData;
-    }
-    const data = await fetcher();
-    cache.set(key, data);
-    return data;
-};
-
 /** Helper: Parse and validate lat/lon query params. Returns null when invalid. */
 const parseCoords = (lat: unknown, lon: unknown): { lat: number; lon: number } | null => {
     const latNum = Number(lat);
@@ -80,7 +69,7 @@ const cityKey = (city: unknown) => String(city).trim().toLowerCase();
 
 /** GET /health - System status */
 apiRouter.get("/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({ status: "ok", timestamp: new Date().toISOString(), cache: cacheBackend() });
 });
 
 /** GET /weather/search/cities - City name autocomplete suggestions */
@@ -92,25 +81,17 @@ apiRouter.get("/weather/search/cities", async (req: Request, res: Response, next
     }
 
     try {
-        const cacheKey = `city_search_${cityKey(q)}`;
-        const cachedData = searchCache.get(cacheKey);
-        if (cachedData) {
-            res.json(cachedData);
-            return;
-        }
-
-        const url = owmUrl("/geo/1.0/direct", { q: String(q).trim(), limit: 5 });
-        const response = await axios.get(url);
-
-        const suggestions = response.data.map((item: GeocodingResult) => ({
-            name: item.name,
-            state: item.state || null,
-            country: item.country,
-            lat: item.lat,
-            lon: item.lon,
-        }));
-
-        searchCache.set(cacheKey, suggestions);
+        const suggestions = await getCached(`city_search_${cityKey(q)}`, SEARCH_TTL, async () => {
+            const url = owmUrl("/geo/1.0/direct", { q: String(q).trim(), limit: 5 });
+            const response = await axios.get(url);
+            return response.data.map((item: GeocodingResult) => ({
+                name: item.name,
+                state: item.state || null,
+                country: item.country,
+                lat: item.lat,
+                lon: item.lon,
+            }));
+        });
         res.json(suggestions);
     } catch (error) {
         next(error);
@@ -126,7 +107,7 @@ apiRouter.get("/weather/city", async (req: Request, res: Response, next: NextFun
     }
 
     try {
-        const data = await getCachedResponse(`weather_city_${cityKey(city)}`, async () => {
+        const data = await getCached(`weather_city_${cityKey(city)}`, WEATHER_TTL, async () => {
             const url = owmUrl("/data/2.5/weather", { q: String(city).trim(), units: "metric" });
             const response = await axios.get(url);
             return formatWeather(response.data);
@@ -146,7 +127,7 @@ apiRouter.get("/weather/location", async (req: Request, res: Response, next: Nex
     }
 
     try {
-        const data = await getCachedResponse(`weather_loc_${coords.lat}_${coords.lon}`, async () => {
+        const data = await getCached(`weather_loc_${coords.lat}_${coords.lon}`, WEATHER_TTL, async () => {
             const url = owmUrl("/data/2.5/weather", { lat: coords.lat, lon: coords.lon, units: "metric" });
             const response = await axios.get(url);
             return formatWeather(response.data);
@@ -157,7 +138,7 @@ apiRouter.get("/weather/location", async (req: Request, res: Response, next: Nex
     }
 });
 
-/** GET /weather/forecast - 5-day forecast by city name, or by lat/lon */
+/** GET /weather/forecast - 5-day daily + 24h hourly forecast by city name, or by lat/lon */
 apiRouter.get("/weather/forecast", async (req: Request, res: Response, next: NextFunction) => {
     const { city } = req.query;
     const coords = parseCoords(req.query.lat, req.query.lon);
@@ -175,7 +156,7 @@ apiRouter.get("/weather/forecast", async (req: Request, res: Response, next: Nex
             ? { lat: coords.lat, lon: coords.lon, units: "metric" }
             : { q: String(city).trim(), units: "metric" };
 
-        const data = await getCachedResponse(cacheKey, async () => {
+        const data = await getCached(cacheKey, WEATHER_TTL, async () => {
             const url = owmUrl("/data/2.5/forecast", params);
             const response = await axios.get(url);
             return formatForecast(response.data);
@@ -250,6 +231,8 @@ interface ForecastItem {
         description: string;
         icon: string;
     }>;
+    /** Probability of precipitation, 0..1 */
+    pop?: number;
     dt_txt: string;
 }
 
@@ -286,15 +269,29 @@ const formatWeather = (data: OpenWeatherResponse) => {
     };
 };
 
+/** Number of 3-hour slots that make up the "next 24 hours" strip */
+const HOURLY_SLOTS = 8;
+
 /**
- * Collapse 3-hourly forecast slots into one entry per calendar day in the
- * city's local timezone. Each day carries its min/max across all slots and
- * uses the slot closest to local noon for the headline temp/condition.
- * The date is returned as a plain YYYY-MM-DD string so the client can format
- * it in the user's locale without timezone drift.
+ * Shape the raw 3-hourly forecast into:
+ *  - `hourly`: the next 24 hours as-is (8 slots), for an hour-by-hour strip
+ *  - `daily`: one entry per calendar day in the city's local timezone, with
+ *    min/max across all slots and the slot closest to local noon for the
+ *    headline temp/condition. The date is a plain YYYY-MM-DD string so the
+ *    client can format it in the user's locale without timezone drift.
  */
 const formatForecast = (data: OpenWeatherForecastResponse) => {
     const tzOffset = data.city?.timezone ?? 0;
+
+    const hourly = data.list.slice(0, HOURLY_SLOTS).map((item) => ({
+        time: item.dt,
+        temp: item.main.temp,
+        description: item.weather[0].main,
+        icon: item.weather[0].icon,
+        /** Precipitation probability as a whole percentage */
+        pop: Math.round((item.pop ?? 0) * 100),
+    }));
+
     const days = new Map<string, { items: ForecastItem[]; localHours: number[] }>();
 
     for (const item of data.list) {
@@ -306,7 +303,7 @@ const formatForecast = (data: OpenWeatherForecastResponse) => {
         days.set(key, entry);
     }
 
-    return Array.from(days.entries())
+    const daily = Array.from(days.entries())
         .slice(0, 5)
         .map(([date, { items, localHours }]) => {
             let repIndex = 0;
@@ -330,6 +327,8 @@ const formatForecast = (data: OpenWeatherForecastResponse) => {
                 icon: rep.weather[0].icon,
             };
         });
+
+    return { timezone: tzOffset, daily, hourly };
 };
 
 export { app, formatWeather, formatForecast };

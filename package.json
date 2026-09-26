@@ -7,32 +7,35 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "server": "bun src/backend/server.ts"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.1.1",
     "@tailwindcss/vite": "^4.1.18",
-    "autoprefixer": "^10.4.24",
     "axios": "^1.13.4",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "framer-motion": "^12.33.0",
-    "googleapis": "^171.4.0",
     "lucide-react": "^0.561.0",
     "node-cache": "^5.1.2",
-    "nodemon": "^3.1.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.0",
-    "recharts": "^3.7.0",
     "serverless-http": "^4.0.0",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@netlify/functions": "^5.1.5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-rate-limit": "^6.0.2",
@@ -44,8 +47,10 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.26",
     "globals": "^16.5.0",
+    "jsdom": "^30.1.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.54.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^5.0.2"
   }
 }
