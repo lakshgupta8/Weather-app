@@ -1,28 +1,30 @@
 import { useEffect, useState } from "react";
-import { Loader2, Activity, Server, Code2 } from "lucide-react";
-import axios from "axios";
+import { Loader2, Activity, Server, Code2, Database } from "lucide-react";
+import { getHealth, type HealthStatus } from "../api";
 
-import { BASE_URL } from "../api";
+const CACHE_LABELS: Record<NonNullable<HealthStatus["cache"]>, string> = {
+    "netlify-blobs": "Shared (Netlify Blobs)",
+    memory: "In-memory",
+};
 
 export const AboutPage = () => {
-    const [health, setHealth] = useState<{ status: string; timestamp: string } | null>(null);
+    const [health, setHealth] = useState<HealthStatus | null>(null);
     const [loading, setLoading] = useState(true);
 
     // Check backend health on mount
     useEffect(() => {
-        const checkHealth = async () => {
-            try {
-                const response = await axios.get(`${BASE_URL}/health`);
-                setHealth(response.data);
-            } catch (error) {
+        const controller = new AbortController();
+        getHealth(controller.signal)
+            .then((data) => setHealth(data))
+            .catch((error) => {
+                if (controller.signal.aborted) return;
                 console.error("Health check failed", error);
                 setHealth(null);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        checkHealth();
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+        return () => controller.abort();
     }, []);
 
     return (
@@ -51,6 +53,12 @@ export const AboutPage = () => {
                                 <Activity className="w-5 h-5" />
                                 <span className="font-medium">All Systems Operational</span>
                             </div>
+                            {health.cache && (
+                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm">
+                                    <Database className="w-4 h-4 text-blue-500" />
+                                    <span>Response cache: {CACHE_LABELS[health.cache]}</span>
+                                </div>
+                            )}
                             <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg font-mono text-slate-600 dark:text-slate-400 text-xs">
                                 Last Checked: {new Date(health.timestamp).toLocaleString()}
                             </div>
@@ -86,7 +94,7 @@ export const AboutPage = () => {
                             <h2 className="font-bold text-slate-800 dark:text-slate-200 text-xl">Tech Stack</h2>
                         </div>
                         <ul className="flex flex-wrap gap-2">
-                            {["React 19", "TypeScript", "Tailwind CSS v4", "Vite", "Bun", "Express", "Recharts"].map((tech) => (
+                            {["React 19", "TypeScript", "Tailwind CSS v4", "Vite", "Bun", "Express", "Netlify Blobs", "Vitest"].map((tech) => (
                                 <li key={tech} className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full font-medium text-slate-700 dark:text-slate-300 text-sm">
                                     {tech}
                                 </li>

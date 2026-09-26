@@ -6,11 +6,11 @@ import {
     getForecastByCity,
     getForecastByLocation,
 } from "../../../api";
-import type { WeatherData, ForecastData } from "../../../types";
+import type { WeatherData, ForecastResponse } from "../../../types";
 
 export interface UseWeatherResult {
     weather: WeatherData | null;
-    forecast: ForecastData[] | null;
+    forecast: ForecastResponse | null;
     loading: boolean;
     error: string;
     /** Resolves to true when the fetch succeeded and the state now holds its result */
@@ -19,7 +19,7 @@ export interface UseWeatherResult {
     fetchWeatherByLocation: (lat: number, lon: number) => Promise<boolean>;
 }
 
-type Fetcher = (signal: AbortSignal) => Promise<[WeatherData, ForecastData[]]>;
+type Fetcher = (signal: AbortSignal) => Promise<[WeatherData, ForecastResponse | null]>;
 
 /**
  * Custom hook to manage weather state and API calls.
@@ -30,7 +30,7 @@ type Fetcher = (signal: AbortSignal) => Promise<[WeatherData, ForecastData[]]>;
  */
 export const useWeather = (): UseWeatherResult => {
     const [weather, setWeather] = useState<WeatherData | null>(null);
-    const [forecast, setForecast] = useState<ForecastData[] | null>(null);
+    const [forecast, setForecast] = useState<ForecastResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const controllerRef = useRef<AbortController | null>(null);
@@ -67,9 +67,9 @@ export const useWeather = (): UseWeatherResult => {
     /** Forecast is best-effort: a missing forecast should not hide current conditions */
     const withForecast = (
         weatherPromise: Promise<WeatherData>,
-        forecastPromise: Promise<ForecastData[]>
-    ): Promise<[WeatherData, ForecastData[]]> =>
-        Promise.all([weatherPromise, forecastPromise.catch(() => [] as ForecastData[])]);
+        forecastPromise: Promise<ForecastResponse>
+    ): Promise<[WeatherData, ForecastResponse | null]> =>
+        Promise.all([weatherPromise, forecastPromise.catch(() => null)]);
 
     const fetchWeatherByCity = useCallback(async (city: string) => {
         const name = city.trim();

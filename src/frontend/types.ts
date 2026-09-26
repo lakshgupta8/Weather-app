@@ -36,6 +36,24 @@ export interface ForecastData {
     icon: string;
 }
 
+export interface HourlyForecast {
+    /** Unix seconds */
+    time: number;
+    temp: number;
+    description: string;
+    icon: string;
+    /** Precipitation probability, 0..100 */
+    pop: number;
+}
+
+export interface ForecastResponse {
+    /** Offset from UTC in seconds for the forecast location */
+    timezone: number;
+    daily: ForecastData[];
+    /** The next 24 hours in 3-hour steps */
+    hourly: HourlyForecast[];
+}
+
 export interface CitySuggestion {
     name: string;
     state: string | null;
